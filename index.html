@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Chatmandu - Public Chat with Channel Creator Upload</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      padding: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      position: relative;
+      overflow: hidden;
+    }
+    input, button, select {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      box-sizing: border-box;
+    }
+    #chat-box {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-top: 10px;
+      background: #f9f9f9;
+      word-break: break-word;
+      border-radius: 5px;
+    }
+    .message {
+      margin: 5px 0;
+      padding: 5px 10px;
+      border-radius: 5px;
+      background: #e0e0e0;
+      max-width: 90%;
+      word-wrap: break-word;
+    }
+    .own {
+      background: #b2f2bb;
+    }
+    .timestamp {
+      font-size: 10px;
+      color: #666;
+      margin-top: 2px;
+      display: block;
+    }
+    .hidden {
+      display: none;
+    }
+    .video-link {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    #join-chat-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 60px;
+      height: 60px;
+      background-color: #007bff;
+      color: white;
+      border-radius: 50%;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    #auth-section {
+      position: relative;
+      margin-top: 100px;
+    }
+    #back-btn {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #000;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      color: white;
+      font-size: 12px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <button id="join-chat-btn" onclick="showJoinInterface()">Join Chat</button>
+
+  <div id="main-content">
+    <h2>video and chat</h2>
+    <div>
+      <label for="channelSelector">Select Channel:</label>
+      <select id="channelSelector" onchange="changeChannel()" style="margin-top:10px;"></select>
+    </div>
+
+    <div id="video-section" style="margin-top:20px;">
+      <h3>Video Player</h3>
+      <video id="video-player" controls style="width: 100%; max-height: 300px; background: black; border-radius: 8px;"></video>
+    </div>
+
+    <div id="channel-videos" style="margin-top:10px;">
+      <h4>Videos in channel</h4>
+      <div id="videoLinksList"></div>
+      <div id="upload-section">
+        <input type="text" id="videoUrlInput" placeholder="" />
+        <button onclick="vidstore()">vidstore</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="auth-section" class="hidden">
+    <button id="back-btn" class="hidden" onclick="goBack()">Back</button>
+    <input type="text" id="username" placeholder="Unique Username" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="signUp()">Sign Up</button>
+    <button onclick="logIn()">Log In</button>
+  </div>
+
+  <div id="chat-interface" class="hidden" style="margin-top:20px;">
+    <p>Welcome, <span id="user-display"></span>! <button onclick="logOut()">Log Out</button></p>
+    <div id="chat-section">
+      <h3>Public Chat</h3>
+      <div id="chat-box"></div>
+      <input type="text" id="messageInput" placeholder="Type a message..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import {
+    getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+    onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import {
+    getDatabase, ref, push, onChildAdded, onValue, remove
+  } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBs4_382kJXVfjr4nqldgMHx2zLyFoWrf4",
+    authDomain: "chatmandu-3a637.firebaseapp.com",
+    databaseURL: "https://chatmandu-3a637-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "chatmandu-3a637",
+    storageBucket: "chatmandu-3a637.appspot.com",
+    messagingSenderId: "1027028708142",
+    appId: "1:1027028708142:web:33dc3dc24f0858fafba8bf"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getDatabase(app);
+
+  let currentUsername = '', currentChannel = '';
+  let unsubscribeMessages = null;
+
+  function toEmail(username) {
+    return username.toLowerCase() + "@chatmandu.com";
+  }
+
+  window.showJoinInterface = function() {
+    document.getElementById('main-content').classList.add('hidden');
+    document.getElementById('auth-section').classList.remove('hidden');
+    document.getElementById('join-chat-btn').classList.add('hidden');
+    document.getElementById('back-btn').classList.remove('hidden');
+  };
+
+  window.goBack = function() {
+    document.getElementById('auth-section').classList.add('hidden');
+    document.getElementById('main-content').classList.remove('hidden');
+    document.getElementById('join-chat-btn').classList.remove('hidden');
+    document.getElementById('back-btn').classList.add('hidden');
+  };
+
+  window.signUp = function() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (!username || !password) return;
+    const email = toEmail(username);
+    createUserWithEmailAndPassword(auth, email, password)
+      .then(() => {
+        currentUsername = username;
+        showChatInterface();
+      })
+      .catch(e => alert(e.message));
+  };
+
+  window.logIn = function() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (!username || !password) return;
+    const email = toEmail(username);
+    signInWithEmailAndPassword(auth, email, password)
+      .then(() => {
+        currentUsername = username;
+        showChatInterface();
+      })
+      .catch(e => alert(e.message));
+  };
+
+  window.logOut = function() {
+    signOut(auth);
+  };
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      currentUsername = user.email.split('@')[0];
+      showChatInterface();
+    } else {
+      currentUsername = '';
+      document.getElementById('chat-interface').classList.add('hidden');
+      document.getElementById('auth-section').classList.add('hidden');
+      document.getElementById('main-content').classList.remove('hidden');
+      document.getElementById('join-chat-btn').classList.remove('hidden');
+      document.getElementById('back-btn').classList.add('hidden');
+      if (unsubscribeMessages) {
+        unsubscribeMessages();
+        unsubscribeMessages = null;
+      }
+    }
+    loadChannels();
+  });
+
+  function showChatInterface() {
+    document.getElementById('user-display').textContent = currentUsername;
+    document.getElementById('chat-interface').classList.remove('hidden');
+    document.getElementById('auth-section').classList.add('hidden');
+    document.getElementById('main-content').classList.add('hidden');
+    document.getElementById('join-chat-btn').classList.add('hidden');
+    document.getElementById('back-btn').classList.add('hidden');
+    const chatBox = document.getElementById('chat-box');
+    chatBox.innerHTML = '';
+    if (unsubscribeMessages) {
+      unsubscribeMessages();
+    }
+    const messagesRef = ref(db, "messages");
+    unsubscribeMessages = onChildAdded(messagesRef, snapshot => {
+      const msg = snapshot.val();
+      const div = document.createElement('div');
+      div.className = 'message';
+      if (msg.user === currentUsername) div.classList.add('own');
+      div.innerHTML = `<div class="message-content">${msg.user}: ${msg.text}</div><span class="timestamp">${formatTime(msg.time)}</span>`;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+  }
+
+  window.sendMessage = function() {
+    const msg = document.getElementById('messageInput').value.trim();
+    if (!msg) return;
+    push(ref(db, "messages"), {
+      user: currentUsername,
+      text: msg,
+      time: Date.now()
+    });
+    document.getElementById('messageInput').value = '';
+  };
+
+  function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = hours % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  }
+
+  function loadChannels() {
+    const selector = document.getElementById('channelSelector');
+    selector.innerHTML = '';
+    onValue(ref(db, 'channels'), snap => {
+      const channels = snap.val();
+      if (!channels) return;
+      for (const name in channels) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        selector.appendChild(option);
+      }
+      currentChannel = selector.value || Object.keys(channels)[0];
+      selector.value = currentChannel;
+      loadChannelVideos(currentChannel);
+    });
+  }
+
+  window.changeChannel = function() {
+    currentChannel = document.getElementById('channelSelector').value;
+    loadChannelVideos(currentChannel);
+  };
+
+  function loadChannelVideos(channel) {
+    const list = document.getElementById('videoLinksList');
+    list.innerHTML = '';
+    onValue(ref(db, 'channels/' + channel), snap => {
+      const data = snap.val();
+      const videos = data?.videos || {};
+      for (const key in videos) {
+        const url = videos[key].url;
+        const div = document.createElement('div');
+        div.className = 'video-link';
+        div.innerHTML = `
+          <button onclick="playVideo('${url}')">Play</button>
+          <button onclick="deleteVideoLink('${channel}','${key}')">Delete</button>
+        `;
+        list.appendChild(div);
+      }
+    });
+  }
+
+  window.addVideoLink = function() {
+    const url = document.getElementById('videoUrlInput').value.trim();
+    if (!url || !currentChannel) return;
+    push(ref(db, `channels/${currentChannel}/videos`), { url });
+    document.getElementById('videoUrlInput').value = '';
+  };
+
+  window.deleteVideoLink = function(channel, key) {
+    remove(ref(db, `channels/${channel}/videos/${key}`));
+  };
+
+  window.playVideo = function(url) {
+    const video = document.getElementById('video-player');
+    video.src = url;
+    video.load();
+    video.play();
+  };
+</script>
+
+</body>
+</html>
